@@ -1,6 +1,6 @@
 ## CISH
 
-<p><strong>Cish</strong> is a shell project I'm challenging myself to do in my journey of learning the Golang programming language.</p>
+<p><strong>Cish</strong> is a shell project I'm challenging myself to do in my journey of learning the Go programming language.</p>
 
 ### How to get this project running
 
