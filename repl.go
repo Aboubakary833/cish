@@ -24,13 +24,13 @@ func Repl(rd io.Reader) {
 	for {
 		printSingleLineCmdPrompt()
 		input, err := readFromSource(rd)
-
+		fmt.Print(input)
 		if (input == "\n") {
 			continue
 		}
 
 		if err != nil {
-			fmt.Fprintln(os.Stdout, err.Error())
+			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(EXIT_ERROR)
 		}
 
@@ -47,8 +47,10 @@ func Repl(rd io.Reader) {
 // and return a string and an error if there is one.
 //
 // It also have the ability to read a multiline from a stdin.
-func readFromSource(source io.Reader) (str string, err error) {
+func readFromSource(source io.Reader) (line string, err error) {
 	reader := bufio.NewReader(source)
+	quotes := []rune{'"', '\''}
+	quoteOpened := false
 
 	for {
 		char, _, r_err := reader.ReadRune()
@@ -58,25 +60,50 @@ func readFromSource(source io.Reader) (str string, err error) {
 			break
 		}
 
+		if slices.Contains(quotes, char) {
+			if len(line) == 0 {
+				quoteOpened = true
+				continue
+			}
+			
+			if quoteOpened {
+				line += string(char)
+				quoteOpened = false
+				continue
+			}
+
+			if !quoteOpened  && strings.HasSuffix(line, string(char)) {
+				line, _ = strings.CutSuffix(line, string(char))
+				quoteOpened = true
+				continue
+			} else {
+				quoteOpened = true
+			}
+		}
+
 		if char == '\n' {
-			if strings.HasSuffix(str, "\\") {
-				str, _ = strings.CutSuffix(str, "\\")
+
+			if quoteOpened {
+				printMultiLinesCmdPrompt()
+				continue
+			} else if strings.HasSuffix(line, "\\") {
+				line, _ = strings.CutSuffix(line, "\\")
 				printMultiLinesCmdPrompt()
 				continue
 			} else {
-				str += "\n"
+				line += "\n"
 				break
 			}
 		}
 
-		str += string(char)
+		line += string(char)
 
 	}
 
 	return;
 }
 
-// printSingleLineCmdPrompt is the first prompt string.
+// printSingleLineCmdPrompt is the first prompt lineing.
 // It wait the one that wait for you to enter a command
 func printSingleLineCmdPrompt() {
 	fmt.Fprint(os.Stdout, "$ ")

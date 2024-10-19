@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestReadFromSource(t *testing.T) {
@@ -13,9 +15,7 @@ func TestReadFromSource(t *testing.T) {
 		expected := "echo \"Hello, world\""
 		cmd, _ := readFromSource(&buf)
 
-		if expected != cmd {
-			t.Errorf("Expected %s, but got %s\n", expected, cmd)
-		}
+		assert.Equal(t, expected, cmd)
 	})
 
 	t.Run("it read multi lines command from a source", func(t *testing.T) {
@@ -25,8 +25,6 @@ func TestReadFromSource(t *testing.T) {
 		expected := "echo \"This is where all start. I named this shell cish, but I could rename it somthing else. Maybe cheh, I don't know.\""
 		cmd, _ := readFromSource(&buf)
 
-		if expected != cmd {
-			t.Errorf("Expected %s, but got %s\n", expected, cmd)
-		}
+		assert.Equal(t, expected, cmd)
 	})
 }
