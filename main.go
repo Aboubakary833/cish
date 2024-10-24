@@ -1,7 +1,9 @@
 package main
 
-import "os"
+import (
+	"os"
+)
 
 func main() {
-	Repl(os.Stdin);
+	Repl(os.Stdin)
 }
