@@ -16,12 +16,15 @@ const (
 	EXIT_ERROR
 )
 
+const NULChar = '\x00'
+
 const (
 	KeyCtrlC     = 3
 	KeyCtrlD     = 4
 	KeyEnter     = '\r'
 	KeyNewLine   = '\n'
 	keyArrow     = '\033'
+	keyBackSlace =  '\\'
 	KeyBackspace = 127
 	KeyUnknown   = 256 + iota
 	KeyAltLeft   = 259 + iota
@@ -47,20 +50,24 @@ var (
 )
 
 type Input struct {
-	reader       *bufio.Reader
-	quotesOpened bool
-	cursorPos    uint64
-	prompt       int
-	buffer       string
+	reader       	*bufio.Reader
+	quotesOpened 	bool
+	openedQuote 	byte
+  	shouldEscape 	bool
+	cursorPos    	uint64
+	prompt       	int
+	buffer       	string
 }
 
 func newInput(source io.Reader) *Input {
 	return &Input{
-		reader:       bufio.NewReader(source),
-		quotesOpened: false,
-		cursorPos:    uint64(0),
-		prompt:       PS1,
-		buffer:       "",
+		reader:      	bufio.NewReader(source),
+		quotesOpened:	false,
+		openedQuote:	NULChar,
+		shouldEscape:	false,
+		cursorPos:   	uint64(0),
+		prompt:      	PS1,
+		buffer:       	"",
 	}
 }
 
@@ -89,6 +96,9 @@ func (input *Input) read() (err error) {
 
 			case key == KeyBackspace:
 				input.handleBackspace()
+				
+			case key == keyBackSlace:
+				input.handleBackSlace()
 
 			case key == keyArrow:
 				if b_err := input.moveCursor(); b_err != nil {
@@ -103,10 +113,17 @@ func (input *Input) read() (err error) {
 
 			default:
 				input.appendToBuffer(key)
+				if input.shouldEscape {
+					input.shouldEscape = false
+				}
 			}
 		}
 
 	return
+}
+
+func (input *Input) hasSuffix(str string) bool {
+	return strings.HasSuffix(input.buffer, str)
 }
 
 func (input *Input) appendToBuffer(char byte) {
@@ -126,39 +143,70 @@ func (input *Input) appendToBuffer(char byte) {
 }
 
 func (input *Input) handleQuote(char byte) {
-	quote := string(char)
-	buffer := input.buffer
 
-	if !input.quotesOpened && input.bufferLen() == input.cursorPos {
-		if !strings.HasSuffix(buffer, quote) {
-			input.appendToBuffer(char)
-		} else {
-			input.buffer, _ = strings.CutPrefix(buffer, quote)
-		}
-		input.quotesOpened = true
-	} else {
+	if input.shouldEscape {
 		input.appendToBuffer(char)
-		input.quotesOpened = false
+		input.shouldEscape = false
+		return
 	}
+
+	if input.bufferLen() == 0 || (!input.quotesOpened && !input.shouldEscape) {
+		input.appendToBuffer(char)
+		input.quotesOpened = true
+		input.openedQuote = char
+		return
+	}
+  
+  if !input.quotesOpened && input.shouldEscape {
+    input.appendToBuffer(char)
+    return
+  }
+
+	if char == input.openedQuote && !input.shouldEscape {
+    input.appendToBuffer(char)
+    input.quotesOpened = false
+    input.openedQuote = NULChar
+  } else {
+    input.appendToBuffer(char)
+  }
+	
+}
+
+func (input *Input) handleBackSlace() {
+  if input.shouldEscape {
+    input.appendToBuffer(keyBackSlace)
+    input.shouldEscape = false
+    return
+  }
+
+  input.appendToBuffer(keyBackSlace)
+  input.shouldEscape = true
 }
 
 func (input *Input) handleKeyEnter() bool {
 
 	buffer := input.buffer
+	backSlace := string(keyBackSlace)
 
 	if input.quotesOpened {
 		input.printPS2Prompt()
 		return false
 	}
 
-	if strings.HasSuffix(buffer, "\\") {
-		input.buffer, _ = strings.CutSuffix(buffer, "\\")
-		input.cursorPos--
-		input.printPS2Prompt()
+	if input.hasSuffix(backSlace) {
+		prevChar := string(buffer[input.cursorPos - 1])
+		if strings.EqualFold(prevChar, backSlace) {
+			input.appendToBuffer(KeyNewLine)
+			return true
+		} else {
+			input.buffer, _ = strings.CutSuffix(buffer, backSlace)
+			input.cursorPos--
+			input.printPS2Prompt()
 
-		return false
+			return false
+		}
 	}
-	input.buffer += string(KeyNewLine)
+	input.appendToBuffer(KeyNewLine)
 
 	return true
 }
@@ -166,6 +214,11 @@ func (input *Input) handleKeyEnter() bool {
 func (input *Input) handleBackspace() {
 	if len(input.buffer) == 0 {
 		return
+	}
+
+	if input.quotesOpened && input.hasSuffix(string(input.openedQuote)) {
+		input.quotesOpened = false
+		input.openedQuote = NULChar
 	}
 
 	input.buffer = input.buffer[:input.bufferLen()-1]
@@ -228,8 +281,8 @@ func (input *Input) printPS2Prompt() {
 	fmt.Fprint(os.Stdout, "\n> ")
 }
 
-// Repl as the acronym for Read Eval Print and Loop
-// is the orchestrator of this shell
+// Repl is the acronym for Read Eval Print and Loop.
+// So, it's the orchestrator of this shell
 func Repl(rd io.Reader) {
 	exitCommands := []string{"exit\n", "quit\n"}
 	stdinFd := int(os.Stdin.Fd())
