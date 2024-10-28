@@ -24,7 +24,7 @@ const (
 	KeyEnter     = '\r'
 	KeyNewLine   = '\n'
 	keyArrow     = '\033'
-	keyBackSlace =  '\\'
+	keyBackSlace = '\\'
 	KeyBackspace = 127
 	KeyUnknown   = 256 + iota
 	KeyAltLeft   = 259 + iota
@@ -50,24 +50,24 @@ var (
 )
 
 type Input struct {
-	reader       	*bufio.Reader
-	quotesOpened 	bool
-	openedQuote 	byte
-  	shouldEscape 	bool
-	cursorPos    	uint64
-	prompt       	int
-	buffer       	string
+	reader       *bufio.Reader
+	quotesOpened bool
+	openedQuote  byte
+	shouldEscape bool
+	cursorPos    uint64
+	prompt       int
+	buffer       string
 }
 
 func newInput(source io.Reader) *Input {
 	return &Input{
-		reader:      	bufio.NewReader(source),
-		quotesOpened:	false,
-		openedQuote:	NULChar,
-		shouldEscape:	false,
-		cursorPos:   	uint64(0),
-		prompt:      	PS1,
-		buffer:       	"",
+		reader:       bufio.NewReader(source),
+		quotesOpened: false,
+		openedQuote:  NULChar,
+		shouldEscape: false,
+		cursorPos:    uint64(0),
+		prompt:       PS1,
+		buffer:       "",
 	}
 }
 
@@ -75,49 +75,49 @@ func (input *Input) read() (err error) {
 
 	input.printPS1Prompt()
 
-	L:
-		for {
-			key, b_err := input.reader.ReadByte()
+L:
+	for {
+		key, b_err := input.reader.ReadByte()
 
-			if b_err != nil {
+		if b_err != nil {
+			err = b_err
+			break
+		}
+
+		fmt.Print(string(key))
+
+		switch true {
+
+		case slices.Contains(quitKeys, key):
+			os.Exit(EXIT_ERROR)
+
+		case slices.Contains(Quotes, key):
+			input.handleQuote(key)
+
+		case key == KeyBackspace:
+			input.handleBackspace()
+
+		case key == keyBackSlace:
+			input.handleBackSlace()
+
+		case key == keyArrow:
+			if b_err := input.moveCursor(); b_err != nil {
 				err = b_err
-				break
+				break L
 			}
 
-			fmt.Print(string(key))
+		case key == KeyEnter:
+			if input.handleKeyEnter() {
+				break L
+			}
 
-			switch true {
-
-			case slices.Contains(quitKeys, key):
-				os.Exit(EXIT_ERROR)
-
-			case slices.Contains(Quotes, key):
-				input.handleQuote(key)
-
-			case key == KeyBackspace:
-				input.handleBackspace()
-				
-			case key == keyBackSlace:
-				input.handleBackSlace()
-
-			case key == keyArrow:
-				if b_err := input.moveCursor(); b_err != nil {
-					err = b_err
-					break L
-				}
-
-			case key == KeyEnter:
-				if input.handleKeyEnter() {
-					break L
-				}
-
-			default:
-				input.appendToBuffer(key)
-				if input.shouldEscape {
-					input.shouldEscape = false
-				}
+		default:
+			input.appendToBuffer(key)
+			if input.shouldEscape {
+				input.shouldEscape = false
 			}
 		}
+	}
 
 	return
 }
@@ -156,31 +156,31 @@ func (input *Input) handleQuote(char byte) {
 		input.openedQuote = char
 		return
 	}
-  
-  if !input.quotesOpened && input.shouldEscape {
-    input.appendToBuffer(char)
-    return
-  }
+
+	if !input.quotesOpened && input.shouldEscape {
+		input.appendToBuffer(char)
+		return
+	}
 
 	if char == input.openedQuote && !input.shouldEscape {
-    input.appendToBuffer(char)
-    input.quotesOpened = false
-    input.openedQuote = NULChar
-  } else {
-    input.appendToBuffer(char)
-  }
-	
+		input.appendToBuffer(char)
+		input.quotesOpened = false
+		input.openedQuote = NULChar
+	} else {
+		input.appendToBuffer(char)
+	}
+
 }
 
 func (input *Input) handleBackSlace() {
-  if input.shouldEscape {
-    input.appendToBuffer(keyBackSlace)
-    input.shouldEscape = false
-    return
-  }
+	if input.shouldEscape {
+		input.appendToBuffer(keyBackSlace)
+		input.shouldEscape = false
+		return
+	}
 
-  input.appendToBuffer(keyBackSlace)
-  input.shouldEscape = true
+	input.appendToBuffer(keyBackSlace)
+	input.shouldEscape = true
 }
 
 func (input *Input) handleKeyEnter() bool {
@@ -194,7 +194,7 @@ func (input *Input) handleKeyEnter() bool {
 	}
 
 	if input.hasSuffix(backSlace) {
-		prevChar := string(buffer[input.cursorPos - 1])
+		prevChar := string(buffer[input.cursorPos-1])
 		if strings.EqualFold(prevChar, backSlace) {
 			input.appendToBuffer(KeyNewLine)
 			return true
@@ -277,7 +277,7 @@ func (input *Input) printPS2Prompt() {
 	if input.prompt != PS2 {
 		input.prompt = PS2
 	}
-	
+
 	fmt.Fprint(os.Stdout, "\n> ")
 }
 
