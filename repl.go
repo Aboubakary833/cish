@@ -72,7 +72,6 @@ func newInput(source io.Reader) *Input {
 }
 
 func (input *Input) read() (err error) {
-
 	input.printPS1Prompt()
 
 L:
@@ -143,7 +142,6 @@ func (input *Input) appendToBuffer(char byte) {
 }
 
 func (input *Input) handleQuote(char byte) {
-
 	if input.shouldEscape {
 		input.appendToBuffer(char)
 		input.shouldEscape = false
@@ -169,7 +167,6 @@ func (input *Input) handleQuote(char byte) {
 	} else {
 		input.appendToBuffer(char)
 	}
-
 }
 
 func (input *Input) handleBackSlace() {
@@ -184,18 +181,23 @@ func (input *Input) handleBackSlace() {
 }
 
 func (input *Input) handleKeyEnter() bool {
+	if input.quotesOpened {
+		input.printPS1Prompt()
+		return false
+	}
+
+	if input.bufferLen() == 0 {
+		return true
+	}
 
 	buffer := input.buffer
 	backSlace := string(keyBackSlace)
 
-	if input.quotesOpened {
-		input.printPS2Prompt()
-		return false
-	}
-
 	if input.hasSuffix(backSlace) {
+
 		prevChar := string(buffer[input.cursorPos-1])
-		if strings.EqualFold(prevChar, backSlace) {
+
+		if input.bufferLen() > 1 && strings.EqualFold(prevChar, backSlace) {
 			input.appendToBuffer(KeyNewLine)
 			return true
 		} else {
@@ -206,6 +208,7 @@ func (input *Input) handleKeyEnter() bool {
 			return false
 		}
 	}
+
 	input.appendToBuffer(KeyNewLine)
 
 	return true
@@ -235,22 +238,13 @@ func (input *Input) cursorIsPeak() bool {
 }
 
 func (input *Input) moveCursor() (err error) {
-
-	var key byte
-
-	for i := 0; i < 2; i++ {
-		b, b_err := input.reader.ReadByte()
-		if b_err != nil {
-			err = b_err
-			return
-		}
-
-		if i == 1 {
-			key = b
-		}
+	key, b_err := input.reader.ReadByte()
+	if b_err != nil {
+		err = b_err
+		return
 	}
 
-	if len(input.buffer) == 0 {
+	if len(input.buffer) == 0 && key == '[' {
 		return
 	}
 
