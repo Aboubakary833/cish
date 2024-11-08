@@ -95,8 +95,7 @@ L:
 		switch true {
 
 		case slices.Contains(quitKeys, key):
-			quitRawMode(input.sourceFd, input.termState)
-			os.Exit(EXIT_ERROR)
+			quitRawMode(input.sourceFd, input.termState, EXIT_ERROR)
 
 		case slices.Contains(Quotes, key):
 			input.handleQuote(key)
@@ -299,8 +298,7 @@ func Repl(rd io.Reader) {
 
 		if err := input.read(); err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
-			quitRawMode(stdinFd, state)
-			os.Exit(EXIT_ERROR)
+			quitRawMode(stdinFd, state, EXIT_ERROR)
 		}
 
 		if slices.Contains(exitCommands, input.buffer) {
@@ -311,8 +309,7 @@ func Repl(rd io.Reader) {
 		fmt.Printf("\n%s", input.buffer)
 	}
 
-	quitRawMode(stdinFd, state)
-	os.Exit(EXIT_SUCCESS)
+	quitRawMode(stdinFd, state, EXIT_SUCCESS)
 }
 
 func enterRawMode(sourceFd int) (state *term.State) {
@@ -324,11 +321,11 @@ func enterRawMode(sourceFd int) (state *term.State) {
 	return
 }
 
-func quitRawMode(sourceFd int, state *term.State) {
+func quitRawMode(sourceFd int, state *term.State, status int) {
 	if t_err := term.Restore(sourceFd, state); t_err != nil {
 		fmt.Fprintln(os.Stderr, t_err.Error())
 		os.Exit(EXIT_ERROR)
 	}
 
-	os.Exit(EXIT_SUCCESS)
+	os.Exit(status)
 }
