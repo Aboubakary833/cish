@@ -83,7 +83,10 @@ L:
 			break
 		}
 
-		fmt.Print(string(key))
+		// Escape arrow keys when printing to stdout
+		if key != keyArrow {
+			fmt.Print(string(key))
+		}
 
 		switch true {
 
@@ -238,6 +241,7 @@ func (input *Input) cursorIsPeak() bool {
 }
 
 func (input *Input) moveCursor() (err error) {
+	
 	key, b_err := input.reader.ReadByte()
 	if b_err != nil {
 		err = b_err
