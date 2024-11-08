@@ -57,9 +57,11 @@ type Input struct {
 	cursorPos    uint64
 	prompt       int
 	buffer       string
+	sourceFd	 int
+	termState *term.State
 }
 
-func newInput(source io.Reader) *Input {
+func newInput(source io.Reader, sourceFd int, state *term.State) *Input {
 	return &Input{
 		reader:       bufio.NewReader(source),
 		quotesOpened: false,
@@ -68,6 +70,8 @@ func newInput(source io.Reader) *Input {
 		cursorPos:    uint64(0),
 		prompt:       PS1,
 		buffer:       "",
+		sourceFd: sourceFd,
+		termState: state,
 	}
 }
 
@@ -91,6 +95,7 @@ L:
 		switch true {
 
 		case slices.Contains(quitKeys, key):
+			quitRawMode(input.sourceFd, input.termState)
 			os.Exit(EXIT_ERROR)
 
 		case slices.Contains(Quotes, key):
@@ -241,21 +246,23 @@ func (input *Input) cursorIsPeak() bool {
 }
 
 func (input *Input) moveCursor() (err error) {
-	
+	input.reader.ReadByte()
 	key, b_err := input.reader.ReadByte()
 	if b_err != nil {
 		err = b_err
 		return
 	}
 
-	if len(input.buffer) == 0 && key == '[' {
+	if len(input.buffer) == 0 || !slices.Contains([]byte{KeyArrowLeft, KeyArrowRight}, key) {
 		return
 	}
-
+	
 	if key == KeyArrowLeft && input.cursorPos > 0 {
 		input.cursorPos--
 	} else if key == KeyArrowRight && !input.cursorIsPeak() {
 		input.cursorPos++
+	} else {
+		return
 	}
 
 	fmt.Printf("\033[%s", string(key))
@@ -285,16 +292,14 @@ func Repl(rd io.Reader) {
 	exitCommands := []string{"exit\n", "quit\n"}
 	stdinFd := int(os.Stdin.Fd())
 
-	state, err := term.MakeRaw(stdinFd)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-	}
+	state := enterRawMode(stdinFd)
 
 	for {
-		input := newInput(rd)
+		input := newInput(rd, stdinFd, state)
 
 		if err := input.read(); err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
+			quitRawMode(stdinFd, state)
 			os.Exit(EXIT_ERROR)
 		}
 
@@ -306,7 +311,21 @@ func Repl(rd io.Reader) {
 		fmt.Printf("\n%s", input.buffer)
 	}
 
-	if t_err := term.Restore(stdinFd, state); t_err != nil {
+	quitRawMode(stdinFd, state)
+	os.Exit(EXIT_SUCCESS)
+}
+
+func enterRawMode(sourceFd int) (state *term.State) {
+	state, err := term.MakeRaw(sourceFd)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+	}
+	
+	return
+}
+
+func quitRawMode(sourceFd int, state *term.State) {
+	if t_err := term.Restore(sourceFd, state); t_err != nil {
 		fmt.Fprintln(os.Stderr, t_err.Error())
 		os.Exit(EXIT_ERROR)
 	}
