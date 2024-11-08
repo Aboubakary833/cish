@@ -221,6 +221,9 @@ func (input *Input) handleKeyEnter() bool {
 	return true
 }
 
+// handleBackspace is executed when the backspace key is press
+// and depending on the input states, determine what
+// action should be done.
 func (input *Input) handleBackspace() {
 	if len(input.buffer) == 0 {
 		return
@@ -236,26 +239,43 @@ func (input *Input) handleBackspace() {
 	input.cursorPos--
 }
 
+// bufferLen return the length of the input buffer
 func (input *Input) bufferLen() uint64 {
 	return uint64(len(input.buffer))
 }
 
+// cursorIsPeak determine wether the cursor
+// is at the end of the buffer or not
 func (input *Input) cursorIsPeak() bool {
 	return input.cursorPos == uint64(len(input.buffer))
 }
 
+// moveCursor handle the shell navigation through
+// the arrows keys. It all modify the input cursor position.
 func (input *Input) moveCursor() (err error) {
-	input.reader.ReadByte()
-	key, b_err := input.reader.ReadByte()
-	if b_err != nil {
-		err = b_err
-		return
+	
+	var key byte
+	var b_err error
+
+	for i := 0; i < 2; i++ {
+		if i == 0 {
+			_, b_err = input.reader.ReadByte()
+		} else {
+			key, b_err = input.reader.ReadByte()
+		}
+		
+		if b_err != nil {
+			err = b_err
+			return
+		}
 	}
 
 	if len(input.buffer) == 0 || !slices.Contains([]byte{KeyArrowLeft, KeyArrowRight}, key) {
 		return
 	}
 	
+	// Increase or decrease cursor depending on the key pressed.
+	// Quit function if the key is one of the vertical keys.
 	if key == KeyArrowLeft && input.cursorPos > 0 {
 		input.cursorPos--
 	} else if key == KeyArrowRight && !input.cursorIsPeak() {
@@ -312,6 +332,8 @@ func Repl(rd io.Reader) {
 	quitRawMode(stdinFd, state, EXIT_SUCCESS)
 }
 
+// enterRawMode put the terminal into the raw mode
+// by disabling the default mode called canonical/cooked mode
 func enterRawMode(sourceFd int) (state *term.State) {
 	state, err := term.MakeRaw(sourceFd)
 	if err != nil {
@@ -321,6 +343,8 @@ func enterRawMode(sourceFd int) (state *term.State) {
 	return
 }
 
+// quitRawMode restore the default canonical mode of the terminal
+// This function is generally called when quiting the cish shell
 func quitRawMode(sourceFd int, state *term.State, status int) {
 	if t_err := term.Restore(sourceFd, state); t_err != nil {
 		fmt.Fprintln(os.Stderr, t_err.Error())
