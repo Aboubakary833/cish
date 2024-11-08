@@ -205,24 +205,15 @@ func (input *Input) handleKeyEnter() bool {
 
 		prevChar := string(buffer[input.cursorPos-1])
 
-		if input.bufferLen() == 1 {
+		if input.bufferLen() == 1 || input.shouldEscape {
 			input.buffer, _ = strings.CutSuffix(buffer, backSlace)
 			input.cursorPos--
 			input.shouldEscape = false
 			input.printPS2Prompt()
 			return false
-		}
-
-		//TODO: Continue with backslace handling when enter hit
-		if strings.EqualFold(prevChar, backSlace) {
+		} else if strings.EqualFold(prevChar, backSlace) {
 			input.appendToBuffer(KeyNewLine)
 			return true
-		} else {
-			input.buffer, _ = strings.CutSuffix(buffer, backSlace)
-			//input.cursorPos--
-			input.printPS2Prompt()
-
-			return false
 		}
 	}
 
