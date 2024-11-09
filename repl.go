@@ -132,6 +132,8 @@ func (input *Input) hasSuffix(str string) bool {
 	return strings.HasSuffix(input.buffer, str)
 }
 
+// appendToBuffer append the typed key to the buffer
+// at the current cursor position
 func (input *Input) appendToBuffer(char byte) {
 	bufferLen := input.bufferLen()
 
@@ -216,7 +218,8 @@ func (input *Input) handleKeyEnter() bool {
 		}
 	}
 
-	input.appendToBuffer(KeyNewLine)
+	// put the newline key to the end of the input
+	input.buffer += string(KeyNewLine)
 
 	return true
 }
@@ -225,7 +228,7 @@ func (input *Input) handleKeyEnter() bool {
 // and depending on the input states, determine what
 // action should be done.
 func (input *Input) handleBackspace() {
-	if len(input.buffer) == 0 {
+	if len(input.buffer) == 0  {
 		return
 	}
 
@@ -234,9 +237,15 @@ func (input *Input) handleBackspace() {
 		input.openedQuote = NULChar
 	}
 
-	input.buffer = input.buffer[:input.bufferLen()-1]
-	fmt.Print("\b\033[K")
-	input.cursorPos--
+	if input.cursorIsPeak() {
+		input.buffer = input.buffer[:input.bufferLen()-1]
+		fmt.Print("\b\033[K")
+		input.cursorPos--
+		return
+	}
+
+	
+	
 }
 
 // bufferLen return the length of the input buffer
@@ -256,6 +265,7 @@ func (input *Input) moveCursor() (err error) {
 	
 	var key byte
 	var b_err error
+	verticalKeys := []byte{KeyArrowLeft, KeyArrowRight}
 
 	for i := 0; i < 2; i++ {
 		if i == 0 {
@@ -270,7 +280,7 @@ func (input *Input) moveCursor() (err error) {
 		}
 	}
 
-	if len(input.buffer) == 0 || !slices.Contains([]byte{KeyArrowLeft, KeyArrowRight}, key) {
+	if len(input.buffer) == 0 || !slices.Contains(verticalKeys, key) {
 		return
 	}
 	
@@ -304,6 +314,10 @@ func (input *Input) printPS2Prompt() {
 
 	fmt.Fprint(os.Stdout, "\n> ")
 }
+
+/* func (input *Input) printOutput() {
+	//
+} */
 
 // Repl is the acronym for Read Eval Print and Loop.
 // So, it's the orchestrator of this shell
