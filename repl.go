@@ -57,8 +57,8 @@ type Input struct {
 	cursorPos    uint64
 	prompt       int
 	buffer       string
-	sourceFd	 int
-	termState *term.State
+	sourceFd     int
+	termState    *term.State
 }
 
 func newInput(source io.Reader, sourceFd int, state *term.State) *Input {
@@ -70,8 +70,8 @@ func newInput(source io.Reader, sourceFd int, state *term.State) *Input {
 		cursorPos:    uint64(0),
 		prompt:       PS1,
 		buffer:       "",
-		sourceFd: sourceFd,
-		termState: state,
+		sourceFd:     sourceFd,
+		termState:    state,
 	}
 }
 
@@ -137,7 +137,7 @@ func (input *Input) hasSuffix(str string) bool {
 func (input *Input) appendToBuffer(char byte) {
 	bufferLen := input.bufferLen()
 
-	if bufferLen == 0 || input.cursorPos == bufferLen {
+	if bufferLen == 0 || input.cursorIsPeak() {
 		input.buffer += string(char)
 		input.cursorPos++
 		return
@@ -172,7 +172,6 @@ func (input *Input) handleQuote(char byte) {
 	if char == input.openedQuote && !input.shouldEscape {
 		input.appendToBuffer(char)
 		input.quotesOpened = false
-		input.openedQuote = NULChar
 	} else {
 		input.appendToBuffer(char)
 	}
@@ -228,7 +227,7 @@ func (input *Input) handleKeyEnter() bool {
 // and depending on the input states, determine what
 // action should be done.
 func (input *Input) handleBackspace() {
-	if len(input.buffer) == 0  {
+	if len(input.buffer) == 0 || input.cursorPos == 0 {
 		return
 	}
 
@@ -237,15 +236,35 @@ func (input *Input) handleBackspace() {
 		input.openedQuote = NULChar
 	}
 
+	bufferLen := input.bufferLen()
+
 	if input.cursorIsPeak() {
-		input.buffer = input.buffer[:input.bufferLen()-1]
+		lastChar := input.buffer[bufferLen-1]
+		input.buffer = input.buffer[:bufferLen-1]
+
+		if input.bufferLen() >= 2 && input.buffer[bufferLen - 2] == keyBackSlace {
+			input.shouldEscape = true
+		} else if lastChar == input.openedQuote {
+			input.quotesOpened = true
+		} 
+
+
 		fmt.Print("\b\033[K")
 		input.cursorPos--
 		return
 	}
 
-	
-	
+	//TODO: handle backspace when cursor is not peak
+	firstChunk := input.buffer[:input.cursorPos - 1]
+	lastChunk := input.buffer[input.cursorPos:bufferLen]
+	input.cursorPos--
+
+	input.buffer = firstChunk + lastChunk
+	fmt.Print("\b\033[K")
+	fmt.Print(lastChunk)
+	for i := len(lastChunk); i > 0; i-- {
+		fmt.Printf("\033[%s", string(KeyArrowLeft))
+	}
 }
 
 // bufferLen return the length of the input buffer
@@ -256,13 +275,13 @@ func (input *Input) bufferLen() uint64 {
 // cursorIsPeak determine wether the cursor
 // is at the end of the buffer or not
 func (input *Input) cursorIsPeak() bool {
-	return input.cursorPos == uint64(len(input.buffer))
+	return input.cursorPos == input.bufferLen()
 }
 
 // moveCursor handle the shell navigation through
 // the arrows keys. It all modify the input cursor position.
 func (input *Input) moveCursor() (err error) {
-	
+
 	var key byte
 	var b_err error
 	verticalKeys := []byte{KeyArrowLeft, KeyArrowRight}
@@ -273,7 +292,7 @@ func (input *Input) moveCursor() (err error) {
 		} else {
 			key, b_err = input.reader.ReadByte()
 		}
-		
+
 		if b_err != nil {
 			err = b_err
 			return
@@ -283,7 +302,7 @@ func (input *Input) moveCursor() (err error) {
 	if len(input.buffer) == 0 || !slices.Contains(verticalKeys, key) {
 		return
 	}
-	
+
 	// Increase or decrease cursor depending on the key pressed.
 	// Quit function if the key is one of the vertical keys.
 	if key == KeyArrowLeft && input.cursorPos > 0 {
@@ -353,7 +372,7 @@ func enterRawMode(sourceFd int) (state *term.State) {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 	}
-	
+
 	return
 }
 
