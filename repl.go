@@ -49,7 +49,7 @@ var (
 	quitKeys = []byte{KeyCtrlC, KeyCtrlD}
 )
 
-type Input struct {
+type Command struct {
 	reader       *bufio.Reader
 	quotesOpened bool
 	openedQuote  byte
@@ -61,8 +61,8 @@ type Input struct {
 	termState    *term.State
 }
 
-func newInput(source io.Reader, sourceFd int, state *term.State) *Input {
-	return &Input{
+func newCommand(source io.Reader, sourceFd int, state *term.State) *Command {
+	return &Command{
 		reader:       bufio.NewReader(source),
 		quotesOpened: false,
 		openedQuote:  NULChar,
@@ -75,52 +75,50 @@ func newInput(source io.Reader, sourceFd int, state *term.State) *Input {
 	}
 }
 
-func (input *Input) read() (err error) {
-	input.printPS1Prompt()
+func (cmd *Command) read() (err error) {
+	cmd.printPS1Prompt()
 
 L:
 	for {
-		key, b_err := input.reader.ReadByte()
+		key, b_err := cmd.reader.ReadByte()
 
 		if b_err != nil {
 			err = b_err
 			break
 		}
 
-		// Escape arrow keys when printing to stdout
-		if key != keyArrow {
-			fmt.Print(string(key))
-		}
+		// Print out the key
+		cmd.printKey(key)
 
 		switch true {
 
 		case slices.Contains(quitKeys, key):
-			quitRawMode(input.sourceFd, input.termState, EXIT_ERROR)
+			quitRawMode(cmd.sourceFd, cmd.termState, EXIT_ERROR)
 
 		case slices.Contains(Quotes, key):
-			input.handleQuote(key)
+			cmd.handleQuote(key)
 
 		case key == KeyBackspace:
-			input.handleBackspace()
+			cmd.handleBackspace()
 
 		case key == keyBackSlace:
-			input.handleBackSlace()
+			cmd.handleBackSlace()
 
 		case key == keyArrow:
-			if b_err := input.moveCursor(); b_err != nil {
+			if b_err := cmd.moveCursor(); b_err != nil {
 				err = b_err
 				break L
 			}
 
 		case key == KeyEnter:
-			if input.handleKeyEnter() {
+			if cmd.handleKeyEnter() {
 				break L
 			}
 
 		default:
-			input.appendToBuffer(key)
-			if input.shouldEscape {
-				input.shouldEscape = false
+			cmd.appendToBuffer(key)
+			if cmd.shouldEscape {
+				cmd.shouldEscape = false
 			}
 		}
 	}
@@ -128,159 +126,161 @@ L:
 	return
 }
 
-func (input *Input) hasSuffix(str string) bool {
-	return strings.HasSuffix(input.buffer, str)
+func (cmd *Command) hasSuffix(str string) bool {
+	return strings.HasSuffix(cmd.buffer, str)
 }
 
 // appendToBuffer append the typed key to the buffer
 // at the current cursor position
-func (input *Input) appendToBuffer(char byte) {
-	bufferLen := input.bufferLen()
+func (cmd *Command) appendToBuffer(char byte) {
+	bufferLen := cmd.bufferLen()
 
-	if bufferLen == 0 || input.cursorIsPeak() {
-		input.buffer += string(char)
-		input.cursorPos++
+	if bufferLen == 0 || cmd.cursorIsPeak() {
+		cmd.buffer += string(char)
+		cmd.cursorPos++
 		return
 	}
 
-	firstChunk := input.buffer[:input.cursorPos]
-	lastChunk := input.buffer[input.cursorPos:bufferLen]
+	firstChunk := cmd.buffer[:cmd.cursorPos]
+	lastChunk := cmd.buffer[cmd.cursorPos:bufferLen]
 
-	input.buffer = firstChunk + string(char) + lastChunk
-	input.cursorPos++
+	cmd.buffer = firstChunk + string(char) + lastChunk
+	cmd.cursorPos++
 }
 
-func (input *Input) handleQuote(char byte) {
-	if input.shouldEscape {
-		input.appendToBuffer(char)
-		input.shouldEscape = false
+func (cmd *Command) handleQuote(char byte) {
+	if cmd.shouldEscape {
+		cmd.appendToBuffer(char)
+		cmd.shouldEscape = false
 		return
 	}
 
-	if input.bufferLen() == 0 || (!input.quotesOpened && !input.shouldEscape) {
-		input.appendToBuffer(char)
-		input.quotesOpened = true
-		input.openedQuote = char
+	if cmd.bufferLen() == 0 || (!cmd.quotesOpened && !cmd.shouldEscape) {
+		cmd.appendToBuffer(char)
+		cmd.quotesOpened = true
+		cmd.openedQuote = char
 		return
 	}
 
-	if !input.quotesOpened && input.shouldEscape {
-		input.appendToBuffer(char)
+	if !cmd.quotesOpened && cmd.shouldEscape {
+		cmd.appendToBuffer(char)
 		return
 	}
 
-	if char == input.openedQuote && !input.shouldEscape {
-		input.appendToBuffer(char)
-		input.quotesOpened = false
+	if char == cmd.openedQuote && !cmd.shouldEscape {
+		cmd.appendToBuffer(char)
+		cmd.quotesOpened = false
 	} else {
-		input.appendToBuffer(char)
+		cmd.appendToBuffer(char)
 	}
 }
 
-func (input *Input) handleBackSlace() {
-	if input.shouldEscape {
-		input.appendToBuffer(keyBackSlace)
-		input.shouldEscape = false
+func (cmd *Command) handleBackSlace() {
+	if cmd.shouldEscape {
+		cmd.appendToBuffer(keyBackSlace)
+		cmd.shouldEscape = false
 		return
 	}
 
-	input.appendToBuffer(keyBackSlace)
-	input.shouldEscape = true
+	cmd.appendToBuffer(keyBackSlace)
+	cmd.shouldEscape = true
 }
 
-func (input *Input) handleKeyEnter() bool {
-	if input.quotesOpened {
-		input.printPS2Prompt()
+func (cmd *Command) handleKeyEnter() bool {
+	if cmd.quotesOpened {
+		cmd.printPS2Prompt()
 		return false
 	}
 
-	if input.bufferLen() == 0 {
+	if cmd.bufferLen() == 0 {
 		return true
 	}
 
-	buffer := input.buffer
+	buffer := cmd.buffer
 	backSlace := string(keyBackSlace)
 
-	if input.hasSuffix(backSlace) {
+	if cmd.hasSuffix(backSlace) {
 
-		prevChar := string(buffer[input.cursorPos-1])
+		prevChar := string(buffer[cmd.cursorPos-1])
 
-		if input.bufferLen() == 1 || input.shouldEscape {
-			input.buffer, _ = strings.CutSuffix(buffer, backSlace)
-			input.cursorPos--
-			input.shouldEscape = false
-			input.printPS2Prompt()
+		if cmd.bufferLen() == 1 || cmd.shouldEscape {
+			cmd.buffer, _ = strings.CutSuffix(buffer, backSlace)
+			cmd.cursorPos--
+			cmd.shouldEscape = false
+			cmd.printPS2Prompt()
 			return false
 		} else if strings.EqualFold(prevChar, backSlace) {
-			input.appendToBuffer(KeyNewLine)
+			cmd.appendToBuffer(KeyNewLine)
 			return true
 		}
 	}
 
-	// put the newline key to the end of the input
-	input.buffer += string(KeyNewLine)
+	// put the newline key to the end of the cmd
+	cmd.buffer += string(KeyNewLine)
 
 	return true
 }
 
 // handleBackspace is executed when the backspace key is press
-// and depending on the input states, determine what
+// and depending on the cmd states, determine what
 // action should be done.
-func (input *Input) handleBackspace() {
-	if len(input.buffer) == 0 || input.cursorPos == 0 {
+func (cmd *Command) handleBackspace() {
+	if len(cmd.buffer) == 0 || cmd.cursorPos == 0 {
 		return
 	}
 
-	if input.quotesOpened && input.hasSuffix(string(input.openedQuote)) {
-		input.quotesOpened = false
-		input.openedQuote = NULChar
+	if cmd.quotesOpened && cmd.hasSuffix(string(cmd.openedQuote)) {
+		cmd.quotesOpened = false
+		cmd.openedQuote = NULChar
 	}
 
-	bufferLen := input.bufferLen()
+	bufferLen := cmd.bufferLen()
 
-	if input.cursorIsPeak() {
-		lastChar := input.buffer[bufferLen-1]
-		input.buffer = input.buffer[:bufferLen-1]
+	if cmd.cursorIsPeak() {
+		lastChar := cmd.buffer[bufferLen-1]
+		cmd.buffer = cmd.buffer[:bufferLen-1]
 
-		if input.bufferLen() >= 2 && input.buffer[bufferLen - 2] == keyBackSlace {
-			input.shouldEscape = true
-		} else if lastChar == input.openedQuote {
-			input.quotesOpened = true
+		if bufferLen >= 2 && cmd.buffer[bufferLen - 2] == keyBackSlace {
+			cmd.shouldEscape = true
+		} else if lastChar == cmd.openedQuote {
+			cmd.quotesOpened = true
 		} 
 
 
 		fmt.Print("\b\033[K")
-		input.cursorPos--
+		cmd.cursorPos--
 		return
 	}
 
-	//TODO: handle backspace when cursor is not peak
-	firstChunk := input.buffer[:input.cursorPos - 1]
-	lastChunk := input.buffer[input.cursorPos:bufferLen]
-	input.cursorPos--
-
-	input.buffer = firstChunk + lastChunk
+	// Remove the char from buffer
+	firstChunk := cmd.buffer[:cmd.cursorPos - 1]
+	lastChunk := cmd.buffer[cmd.cursorPos:bufferLen]
+	cmd.buffer = firstChunk + lastChunk
+	cmd.cursorPos--
+	
 	fmt.Print("\b\033[K")
 	fmt.Print(lastChunk)
+
+	// Replace the cursor in the stdout
 	for i := len(lastChunk); i > 0; i-- {
 		fmt.Printf("\033[%s", string(KeyArrowLeft))
 	}
 }
 
-// bufferLen return the length of the input buffer
-func (input *Input) bufferLen() uint64 {
-	return uint64(len(input.buffer))
+// bufferLen return the length of the cmd buffer
+func (cmd *Command) bufferLen() uint64 {
+	return uint64(len(cmd.buffer))
 }
 
 // cursorIsPeak determine wether the cursor
 // is at the end of the buffer or not
-func (input *Input) cursorIsPeak() bool {
-	return input.cursorPos == input.bufferLen()
+func (cmd *Command) cursorIsPeak() bool {
+	return cmd.cursorPos == cmd.bufferLen()
 }
 
 // moveCursor handle the shell navigation through
-// the arrows keys. It all modify the input cursor position.
-func (input *Input) moveCursor() (err error) {
+// the arrows keys. It all modify the cmd cursor position.
+func (cmd *Command) moveCursor() (err error) {
 
 	var key byte
 	var b_err error
@@ -288,9 +288,9 @@ func (input *Input) moveCursor() (err error) {
 
 	for i := 0; i < 2; i++ {
 		if i == 0 {
-			_, b_err = input.reader.ReadByte()
+			_, b_err = cmd.reader.ReadByte()
 		} else {
-			key, b_err = input.reader.ReadByte()
+			key, b_err = cmd.reader.ReadByte()
 		}
 
 		if b_err != nil {
@@ -299,16 +299,16 @@ func (input *Input) moveCursor() (err error) {
 		}
 	}
 
-	if len(input.buffer) == 0 || !slices.Contains(verticalKeys, key) {
+	if len(cmd.buffer) == 0 || !slices.Contains(verticalKeys, key) {
 		return
 	}
 
 	// Increase or decrease cursor depending on the key pressed.
 	// Quit function if the key is one of the vertical keys.
-	if key == KeyArrowLeft && input.cursorPos > 0 {
-		input.cursorPos--
-	} else if key == KeyArrowRight && !input.cursorIsPeak() {
-		input.cursorPos++
+	if key == KeyArrowLeft && cmd.cursorPos > 0 {
+		cmd.cursorPos--
+	} else if key == KeyArrowRight && !cmd.cursorIsPeak() {
+		cmd.cursorPos++
 	} else {
 		return
 	}
@@ -318,25 +318,28 @@ func (input *Input) moveCursor() (err error) {
 	return
 }
 
-func (input *Input) printPS1Prompt() {
-	if input.prompt != PS1 {
-		input.prompt = PS1
+func (cmd *Command) printPS1Prompt() {
+	if cmd.prompt != PS1 {
+		cmd.prompt = PS1
 	}
 
 	fmt.Fprint(os.Stdout, "\r$ ")
 }
 
-func (input *Input) printPS2Prompt() {
-	if input.prompt != PS2 {
-		input.prompt = PS2
+func (cmd *Command) printPS2Prompt() {
+	if cmd.prompt != PS2 {
+		cmd.prompt = PS2
 	}
 
 	fmt.Fprint(os.Stdout, "\n> ")
 }
 
-/* func (input *Input) printOutput() {
-	//
-} */
+func (cmd *Command) printKey(key byte) {
+	// Escape arrow keys when printing to stdout
+	if key != keyArrow {
+		fmt.Print(string(key))
+	}
+}
 
 // Repl is the acronym for Read Eval Print and Loop.
 // So, it's the orchestrator of this shell
@@ -347,19 +350,19 @@ func Repl(rd io.Reader) {
 	state := enterRawMode(stdinFd)
 
 	for {
-		input := newInput(rd, stdinFd, state)
+		cmd := newCommand(rd, stdinFd, state)
 
-		if err := input.read(); err != nil {
+		if err := cmd.read(); err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			quitRawMode(stdinFd, state, EXIT_ERROR)
 		}
 
-		if slices.Contains(exitCommands, input.buffer) {
+		if slices.Contains(exitCommands, cmd.buffer) {
 			fmt.Print("\n")
 			break
 		}
 
-		fmt.Printf("\n%s", input.buffer)
+		fmt.Printf("\n%s", cmd.buffer)
 	}
 
 	quitRawMode(stdinFd, state, EXIT_SUCCESS)
