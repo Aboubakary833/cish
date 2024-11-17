@@ -186,6 +186,9 @@ func (cmd *Command) handleBackSlace() {
 	cmd.shouldEscape = true
 }
 
+// handleKeyEnter execute when the Enter key is hit.
+// It return false if the command is a multiline command.
+// Otherwise, it return true
 func (cmd *Command) handleKeyEnter() bool {
 	if cmd.quotesOpened {
 		cmd.printPS2Prompt()
@@ -215,6 +218,12 @@ func (cmd *Command) handleKeyEnter() bool {
 		}
 	}
 
+	if !cmd.cursorIsPeak() {
+		for ;cmd.cursorPos < cmd.bufferLen() - 1; cmd.cursorPos++ {
+			cmd.cursorPos++
+			fmt.Print("\033[C")
+		}
+	}
 	// put the newline key to the end of the cmd
 	cmd.buffer += string(KeyNewLine)
 
@@ -335,9 +344,33 @@ func (cmd *Command) printPS2Prompt() {
 }
 
 func (cmd *Command) printKey(key byte) {
+
+	previousChar := " "
+
 	// Escape arrow keys when printing to stdout
-	if key != keyArrow {
+	if key == keyArrow {
+		return
+	}
+	
+	if cmd.cursorIsPeak() {
 		fmt.Print(string(key))
+		return
+	}
+
+	firstChunk := cmd.buffer[:cmd.cursorPos]
+	
+	if len(firstChunk) != 0 {
+		previousChar = firstChunk[cmd.cursorPos - 1:cmd.cursorPos]
+	}
+	lastChunk := cmd.buffer[cmd.cursorPos:cmd.bufferLen()]
+	
+	fmt.Print("\b\033[K")
+	fmt.Print(previousChar + string(key))
+	fmt.Print(lastChunk)
+
+	// Replace the cursor in the stdout
+	for i := len(lastChunk); i > 0; i-- {
+		fmt.Printf("\033[%s", string(KeyArrowLeft))
 	}
 }
 
