@@ -213,17 +213,20 @@ func (cmd *Command) handleKeyEnter() bool {
 			cmd.printPS2Prompt()
 			return false
 		} else if strings.EqualFold(prevChar, backSlace) {
+			
+			if !cmd.cursorIsPeak() {
+				cmd.clearAndPrint()
+			}
+			
 			cmd.appendToBuffer(KeyNewLine)
 			return true
 		}
 	}
 
 	if !cmd.cursorIsPeak() {
-		for ;cmd.cursorPos < cmd.bufferLen() - 1; cmd.cursorPos++ {
-			cmd.cursorPos++
-			fmt.Print("\033[C")
-		}
+		cmd.clearAndPrint()
 	}
+
 	// put the newline key to the end of the cmd
 	cmd.buffer += string(KeyNewLine)
 
@@ -372,6 +375,16 @@ func (cmd *Command) printKey(key byte) {
 	for i := len(lastChunk); i > 0; i-- {
 		fmt.Printf("\033[%s", string(KeyArrowLeft))
 	}
+}
+
+// Clear stdout and print out the command.
+// This function also set the cursor position to peak.
+func (cmd *Command) clearAndPrint() {
+	fmt.Print("\b\033[K")
+	cmd.printPS1Prompt()
+	fmt.Print(cmd.buffer)
+	fmt.Print(string(KeyEnter))
+	cmd.cursorPos = cmd.bufferLen() - 1
 }
 
 // Repl is the acronym for Read Eval Print and Loop.
