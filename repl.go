@@ -283,7 +283,7 @@ func (cmd *Command) handleBackspace() {
 
 	// Replace the cursor in the stdout
 	for i := len(lastChunk); i > 0; i-- {
-		cmd.defaultPrint(string(rune(KeyArrowLeft)))
+		cmd.defaultPrint(ARROW_CHUNK + string(rune(KeyArrowLeft)))
 	}
 }
 
