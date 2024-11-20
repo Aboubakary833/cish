@@ -31,6 +31,12 @@ const (
 	KeyAltRight
 )
 
+const DELETE = "\b\033[K"
+const ARROW_CHUNK = "\033["
+
+// The four constant are A, B, C & D in decimal.
+// They are combine with keyArrow constant to move
+// the cursor inside the command.
 const (
 	KeyArrowUp = 65 + iota
 	KeyArrowBottom
@@ -51,6 +57,7 @@ var (
 
 type Command struct {
 	reader       *bufio.Reader
+	outputStream io.Writer
 	quotesOpened bool
 	openedQuote  byte
 	shouldEscape bool
@@ -64,6 +71,7 @@ type Command struct {
 func newCommand(source io.Reader, sourceFd int, state *term.State) *Command {
 	return &Command{
 		reader:       bufio.NewReader(source),
+		outputStream: os.Stdout,
 		quotesOpened: false,
 		openedQuote:  NULChar,
 		shouldEscape: false,
@@ -259,7 +267,7 @@ func (cmd *Command) handleBackspace() {
 		} 
 
 
-		fmt.Print("\b\033[K")
+		cmd.defaultPrint(DELETE)
 		cmd.cursorPos--
 		return
 	}
@@ -270,12 +278,12 @@ func (cmd *Command) handleBackspace() {
 	cmd.buffer = firstChunk + lastChunk
 	cmd.cursorPos--
 	
-	fmt.Print("\b\033[K")
-	fmt.Print(lastChunk)
+	cmd.defaultPrint(DELETE)
+	cmd.defaultPrint(lastChunk)
 
 	// Replace the cursor in the stdout
 	for i := len(lastChunk); i > 0; i-- {
-		fmt.Printf("\033[%s", string(KeyArrowLeft))
+		cmd.defaultPrint(string(rune(KeyArrowLeft)))
 	}
 }
 
@@ -325,7 +333,7 @@ func (cmd *Command) moveCursor() (err error) {
 		return
 	}
 
-	fmt.Printf("\033[%s", string(key))
+	cmd.defaultPrint(ARROW_CHUNK + string(key))
 
 	return
 }
@@ -335,7 +343,7 @@ func (cmd *Command) printPS1Prompt() {
 		cmd.prompt = PS1
 	}
 
-	fmt.Fprint(os.Stdout, "\r$ ")
+	cmd.defaultPrint("\r$ ")
 }
 
 func (cmd *Command) printPS2Prompt() {
@@ -343,9 +351,18 @@ func (cmd *Command) printPS2Prompt() {
 		cmd.prompt = PS2
 	}
 
-	fmt.Fprint(os.Stdout, "\n> ")
+	cmd.defaultPrint("\n> ")
 }
 
+// defaultPrint is similar to `fmt.Print`, but redirect the output
+// to Command output stream.
+func (cmd *Command) defaultPrint(a ...any) (n int, err error) {
+	n, err = fmt.Fprint(cmd.outputStream, a...)
+
+	return
+}
+
+// printKey print out the typed key
 func (cmd *Command) printKey(key byte) {
 
 	previousChar := " "
@@ -356,7 +373,7 @@ func (cmd *Command) printKey(key byte) {
 	}
 	
 	if cmd.cursorIsPeak() {
-		fmt.Print(string(key))
+		cmd.defaultPrint(string(key))
 		return
 	}
 
@@ -367,23 +384,23 @@ func (cmd *Command) printKey(key byte) {
 	}
 	lastChunk := cmd.buffer[cmd.cursorPos:cmd.bufferLen()]
 	
-	fmt.Print("\b\033[K")
-	fmt.Print(previousChar + string(key))
-	fmt.Print(lastChunk)
+	cmd.defaultPrint(DELETE)
+	cmd.defaultPrint(previousChar + string(key))
+	cmd.defaultPrint(lastChunk)
 
 	// Replace the cursor in the stdout
 	for i := len(lastChunk); i > 0; i-- {
-		fmt.Printf("\033[%s", string(KeyArrowLeft))
+		cmd.defaultPrint(ARROW_CHUNK + string(rune(KeyArrowLeft)))
 	}
 }
 
 // Clear stdout and print out the command.
 // This function also set the cursor position to peak.
 func (cmd *Command) clearAndPrint() {
-	fmt.Print("\b\033[K")
+	cmd.defaultPrint(DELETE)
 	cmd.printPS1Prompt()
-	fmt.Print(cmd.buffer)
-	fmt.Print(string(KeyEnter))
+	cmd.defaultPrint(cmd.buffer)
+	cmd.defaultPrint(string(KeyEnter))
 	cmd.cursorPos = cmd.bufferLen() - 1
 }
 
