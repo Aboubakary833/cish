@@ -404,6 +404,12 @@ func (cmd *Command) clearAndPrint() {
 	cmd.cursorPos = cmd.bufferLen() - 1
 }
 
+// setBuffer set the command buffer and set cursor to peak
+func (cmd *Command) setBuffer(buffer string) {
+	cmd.buffer = buffer
+	cmd.cursorPos = cmd.bufferLen()
+}
+
 // Repl is the acronym for Read Eval Print and Loop.
 // So, it's the orchestrator of this shell
 func Repl(rd io.Reader) {
