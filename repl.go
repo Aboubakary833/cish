@@ -23,8 +23,8 @@ const (
 	KeyCtrlD     = 4
 	KeyEnter     = '\r'
 	KeyNewLine   = '\n'
-	keyArrow     = '\033'
-	keyBackSlace = '\\'
+	KeyArrow     = '\033'
+	KeyBackSlace = '\\'
 	KeyBackspace = 127
 	KeyUnknown   = 256 + iota
 	KeyAltLeft   = 259 + iota
@@ -109,10 +109,10 @@ L:
 		case key == KeyBackspace:
 			cmd.handleBackspace()
 
-		case key == keyBackSlace:
+		case key == KeyBackSlace:
 			cmd.handleBackSlace()
 
-		case key == keyArrow:
+		case key == KeyArrow:
 			if b_err := cmd.moveCursor(); b_err != nil {
 				err = b_err
 				break L
@@ -185,12 +185,12 @@ func (cmd *Command) handleQuote(char byte) {
 
 func (cmd *Command) handleBackSlace() {
 	if cmd.shouldEscape {
-		cmd.appendToBuffer(keyBackSlace)
+		cmd.appendToBuffer(KeyBackSlace)
 		cmd.shouldEscape = false
 		return
 	}
 
-	cmd.appendToBuffer(keyBackSlace)
+	cmd.appendToBuffer(KeyBackSlace)
 	cmd.shouldEscape = true
 }
 
@@ -199,6 +199,10 @@ func (cmd *Command) handleBackSlace() {
 // Otherwise, it return true
 func (cmd *Command) handleKeyEnter() bool {
 	if cmd.quotesOpened {
+		if !cmd.cursorIsPeak() {
+			cmd.clearAndPrint()
+		}
+		cmd.appendToBuffer(KeyNewLine)
 		cmd.printPS2Prompt()
 		return false
 	}
@@ -208,20 +212,18 @@ func (cmd *Command) handleKeyEnter() bool {
 	}
 
 	buffer := cmd.buffer
-	backSlace := string(keyBackSlace)
+	backSlace := string(KeyBackSlace)
 
 	if cmd.hasSuffix(backSlace) {
 
 		prevChar := string(buffer[cmd.cursorPos-1])
 
 		if cmd.bufferLen() == 1 || cmd.shouldEscape {
-			cmd.buffer, _ = strings.CutSuffix(buffer, backSlace)
 			cmd.cursorPos--
 			cmd.shouldEscape = false
 			cmd.printPS2Prompt()
 			return false
 		} else if strings.EqualFold(prevChar, backSlace) {
-			
 			if !cmd.cursorIsPeak() {
 				cmd.clearAndPrint()
 			}
@@ -245,13 +247,20 @@ func (cmd *Command) handleKeyEnter() bool {
 // and depending on the cmd states, determine what
 // action should be done.
 func (cmd *Command) handleBackspace() {
+
 	if len(cmd.buffer) == 0 || cmd.cursorPos == 0 {
 		return
 	}
 
-	if cmd.quotesOpened && cmd.hasSuffix(string(cmd.openedQuote)) {
-		cmd.quotesOpened = false
-		cmd.openedQuote = NULChar
+	if cmd.hasSuffix(string(KeyNewLine)) || cmd.hasSuffix(string(KeyBackSlace)) {
+		return
+	}
+
+	if cmd.quotesOpened {
+		if cmd.hasSuffix(string(cmd.openedQuote)) {
+			cmd.quotesOpened = false
+			cmd.openedQuote = NULChar
+		}
 	}
 
 	bufferLen := cmd.bufferLen()
@@ -260,7 +269,7 @@ func (cmd *Command) handleBackspace() {
 		lastChar := cmd.buffer[bufferLen-1]
 		cmd.buffer = cmd.buffer[:bufferLen-1]
 
-		if bufferLen >= 2 && cmd.buffer[bufferLen - 2] == keyBackSlace {
+		if bufferLen >= 2 && cmd.buffer[bufferLen - 2] == KeyBackSlace {
 			cmd.shouldEscape = true
 		} else if lastChar == cmd.openedQuote {
 			cmd.quotesOpened = true
@@ -368,9 +377,20 @@ func (cmd *Command) printKey(key byte) {
 	previousChar := " "
 
 	// Escape arrow keys when printing to stdout
-	if key == keyArrow {
+	if key == KeyArrow {
 		return
 	}
+
+	/* if cmd.prompt == PS2 {
+
+		if !cmd.quotesOpened {
+			cmd.defaultPrint(string(key))
+			return
+		}
+
+		cmd.defaultPrint(string(key))
+		return
+	} */
 	
 	if cmd.cursorIsPeak() {
 		cmd.defaultPrint(string(key))
@@ -397,7 +417,9 @@ func (cmd *Command) printKey(key byte) {
 // Clear stdout and print out the command.
 // This function also set the cursor position to peak.
 func (cmd *Command) clearAndPrint() {
-	cmd.defaultPrint(DELETE)
+	for i := cmd.bufferLen(); i > 0; i-- {
+		cmd.defaultPrint(DELETE)
+	}
 	cmd.printPS1Prompt()
 	cmd.defaultPrint(cmd.buffer)
 	cmd.defaultPrint(string(KeyEnter))

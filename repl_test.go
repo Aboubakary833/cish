@@ -24,6 +24,45 @@ func newTestCommand(source io.Reader, output io.Writer) *Command {
 	}
 }
 
+func TestBufferLen(t *testing.T) {
+	t.Run("it should return 0", func(t *testing.T) {
+		cmd := newTestCommand(&bytes.Buffer{}, &bytes.Buffer{})
+		
+		assert.Equal(t, uint64(0), cmd.bufferLen())
+	})
+
+	t.Run("it should return 5", func(t *testing.T) {
+		cmd := newTestCommand(&bytes.Buffer{}, &bufio.Writer{})
+		cmd.setBuffer("Hello")
+
+		assert.Equal(t, uint64(5), cmd.bufferLen())
+	})
+}
+
+func TestCursorIsPeak(t *testing.T) {
+
+	t.Run("it should return true", func(t *testing.T) {
+		cmd := newTestCommand(&bytes.Buffer{}, &bufio.Writer{})
+
+		assert.True(t, cmd.cursorIsPeak())
+	})
+
+	t.Run("it should return true", func(t *testing.T) {
+		cmd := newTestCommand(&bytes.Buffer{}, &bytes.Buffer{})
+		cmd.setBuffer("Hello")
+
+		assert.True(t, cmd.cursorIsPeak())
+	})
+
+	t.Run("it should return false", func(t *testing.T) {
+		cmd := newTestCommand(&bytes.Buffer{}, &bytes.Buffer{})
+		cmd.setBuffer("Hello, world")
+		cmd.cursorPos = 5
+
+		assert.False(t, cmd.cursorIsPeak())
+	})
+}
+
 func TestAppendToBuffer(t *testing.T) {
 
 	t.Run("it should set the buffer first char", func(t *testing.T) {
@@ -140,7 +179,7 @@ func TestHandleBackspace(t *testing.T) {
 		cmd.cursorPos = 1
 		cmd.handleBackspace()
 
-		expectedOutput :=  string(DELETE) + "caml"
+		expectedOutput := string(DELETE) + "caml"
 		for i := 0; i < 4; i++ {
 			expectedOutput += (ARROW_CHUNK + string(rune(KeyArrowLeft)))
 		}
@@ -149,3 +188,30 @@ func TestHandleBackspace(t *testing.T) {
 		assert.Equal(t, expectedOutput, output.String())
 	})
 }
+
+func TestHandleBackSlace(t *testing.T) {
+	t.Run("it should enable escape mode", func(t *testing.T) {
+		cmd := newTestCommand(&bytes.Buffer{}, &bytes.Buffer{})
+		cmd.setBuffer("Michel")
+		cmd.handleBackSlace()
+
+		assert.True(t, cmd.hasSuffix(string(rune(KeyBackSlace))))
+		assert.True(t, cmd.shouldEscape)
+	})
+
+	t.Run("it should disable escape mode", func(t *testing.T) {
+		cmd := newTestCommand(&bytes.Buffer{}, &bytes.Buffer{})
+		cmd.setBuffer("Michel\\")
+		cmd.shouldEscape = true
+		cmd.handleBackSlace()
+
+		assert.True(t, cmd.hasSuffix(string(rune(KeyBackSlace))))
+		assert.False(t, cmd.shouldEscape)
+	})
+}
+
+func TestMoveCursor(t *testing.T) {
+	
+}
+
+
