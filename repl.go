@@ -219,7 +219,6 @@ func (cmd *Command) handleKeyEnter() bool {
 		prevChar := string(buffer[cmd.cursorPos-1])
 
 		if cmd.bufferLen() == 1 || cmd.shouldEscape {
-			cmd.cursorPos--
 			cmd.shouldEscape = false
 			cmd.printPS2Prompt()
 			return false
