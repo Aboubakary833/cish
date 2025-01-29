@@ -31,8 +31,10 @@ const (
 	KeyAltRight
 )
 
-const DELETE = "\b\033[K"
-const ARROW_CHUNK = "\033["
+const (
+	DELETE      = "\b\033[K"
+	ARROW_CHUNK = "\033["
+)
 
 // The four constant are A, B, C & D in decimal.
 // They are combine with keyArrow constant to move
@@ -101,7 +103,7 @@ L:
 		switch true {
 
 		case slices.Contains(quitKeys, key):
-			quitRawMode(cmd.sourceFd, cmd.termState, EXIT_ERROR)
+			exitCish(cmd.sourceFd, cmd.termState, EXIT_ERROR)
 
 		case slices.Contains(Quotes, key):
 			cmd.handleQuote(key)
@@ -156,6 +158,7 @@ func (cmd *Command) appendToBuffer(char byte) {
 	cmd.cursorPos++
 }
 
+// handleQuote determine what to do when a quote is typed
 func (cmd *Command) handleQuote(char byte) {
 	if cmd.shouldEscape {
 		cmd.appendToBuffer(char)
@@ -211,14 +214,19 @@ func (cmd *Command) handleKeyEnter() bool {
 		return true
 	}
 
+	prevChar := ""
 	buffer := cmd.buffer
 	backSlace := string(KeyBackSlace)
 
 	if cmd.hasSuffix(backSlace) {
 
-		prevChar := string(buffer[cmd.cursorPos-1])
+		if cmd.cursorPos != 0 {
+			prevChar = string(buffer[cmd.cursorPos-1])
+		}
 
 		if cmd.bufferLen() == 1 || cmd.shouldEscape {
+			cmd.buffer, _ = strings.CutSuffix(cmd.buffer, backSlace)
+			cmd.cursorPos--
 			cmd.shouldEscape = false
 			cmd.printPS2Prompt()
 			return false
@@ -226,7 +234,7 @@ func (cmd *Command) handleKeyEnter() bool {
 			if !cmd.cursorIsPeak() {
 				cmd.clearAndPrint()
 			}
-			
+
 			cmd.appendToBuffer(KeyNewLine)
 			return true
 		}
@@ -242,16 +250,18 @@ func (cmd *Command) handleKeyEnter() bool {
 	return true
 }
 
-// handleBackspace is executed when the backspace key is press
+// handleBackspace is executed when the backspace key is pressed
 // and depending on the cmd states, determine what
 // action should be done.
 func (cmd *Command) handleBackspace() {
-
 	if len(cmd.buffer) == 0 || cmd.cursorPos == 0 {
 		return
 	}
 
-	if cmd.hasSuffix(string(KeyNewLine)) || cmd.hasSuffix(string(KeyBackSlace)) {
+	// removed: cmd.hasSuffix(string(KeyBackSlace))
+	// Reason: I don't see the need to prevent backslace removal
+
+	if cmd.hasSuffix(string(KeyNewLine)) {
 		return
 	}
 
@@ -268,12 +278,15 @@ func (cmd *Command) handleBackspace() {
 		lastChar := cmd.buffer[bufferLen-1]
 		cmd.buffer = cmd.buffer[:bufferLen-1]
 
-		if bufferLen >= 2 && cmd.buffer[bufferLen - 2] == KeyBackSlace {
+		if bufferLen >= 2 && cmd.buffer[bufferLen-2] == KeyBackSlace {
 			cmd.shouldEscape = true
 		} else if lastChar == cmd.openedQuote {
 			cmd.quotesOpened = true
-		} 
+		}
 
+		if lastChar == KeyBackSlace && cmd.shouldEscape {
+			cmd.shouldEscape = false
+		}
 
 		cmd.defaultPrint(DELETE)
 		cmd.cursorPos--
@@ -281,11 +294,11 @@ func (cmd *Command) handleBackspace() {
 	}
 
 	// Remove the char from buffer
-	firstChunk := cmd.buffer[:cmd.cursorPos - 1]
+	firstChunk := cmd.buffer[:cmd.cursorPos-1]
 	lastChunk := cmd.buffer[cmd.cursorPos:bufferLen]
 	cmd.buffer = firstChunk + lastChunk
 	cmd.cursorPos--
-	
+
 	cmd.defaultPrint(DELETE)
 	cmd.defaultPrint(lastChunk)
 
@@ -309,7 +322,6 @@ func (cmd *Command) cursorIsPeak() bool {
 // moveCursor handle the shell navigation through
 // the arrows keys. It all modify the cmd cursor position.
 func (cmd *Command) moveCursor() (err error) {
-
 	var key byte
 	var b_err error
 	verticalKeys := []byte{KeyArrowLeft, KeyArrowRight}
@@ -372,7 +384,6 @@ func (cmd *Command) defaultPrint(a ...any) (n int, err error) {
 
 // printKey print out the typed key
 func (cmd *Command) printKey(key byte) {
-
 	previousChar := " "
 
 	// Escape arrow keys when printing to stdout
@@ -390,19 +401,19 @@ func (cmd *Command) printKey(key byte) {
 		cmd.defaultPrint(string(key))
 		return
 	} */
-	
+
 	if cmd.cursorIsPeak() {
 		cmd.defaultPrint(string(key))
 		return
 	}
 
 	firstChunk := cmd.buffer[:cmd.cursorPos]
-	
+
 	if len(firstChunk) != 0 {
-		previousChar = firstChunk[cmd.cursorPos - 1:cmd.cursorPos]
+		previousChar = firstChunk[cmd.cursorPos-1 : cmd.cursorPos]
 	}
 	lastChunk := cmd.buffer[cmd.cursorPos:cmd.bufferLen()]
-	
+
 	cmd.defaultPrint(DELETE)
 	cmd.defaultPrint(previousChar + string(key))
 	cmd.defaultPrint(lastChunk)
@@ -420,8 +431,10 @@ func (cmd *Command) clearAndPrint() {
 		cmd.defaultPrint(DELETE)
 	}
 	cmd.printPS1Prompt()
+	quitRawMode(cmd.sourceFd, cmd.termState)
 	cmd.defaultPrint(cmd.buffer)
 	cmd.defaultPrint(string(KeyEnter))
+	enterRawMode(cmd.sourceFd)
 	cmd.cursorPos = cmd.bufferLen() - 1
 }
 
@@ -444,7 +457,7 @@ func Repl(rd io.Reader) {
 
 		if err := cmd.read(); err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
-			quitRawMode(stdinFd, state, EXIT_ERROR)
+			exitCish(stdinFd, state, EXIT_ERROR)
 		}
 
 		if slices.Contains(exitCommands, cmd.buffer) {
@@ -455,7 +468,7 @@ func Repl(rd io.Reader) {
 		fmt.Printf("\n%s", cmd.buffer)
 	}
 
-	quitRawMode(stdinFd, state, EXIT_SUCCESS)
+	exitCish(stdinFd, state, EXIT_SUCCESS)
 }
 
 // enterRawMode put the terminal into the raw mode
@@ -470,12 +483,14 @@ func enterRawMode(sourceFd int) (state *term.State) {
 }
 
 // quitRawMode restore the default canonical mode of the terminal
-// This function is generally called when quiting the cish shell
-func quitRawMode(sourceFd int, state *term.State, status int) {
+func quitRawMode(sourceFd int, state *term.State) {
 	if t_err := term.Restore(sourceFd, state); t_err != nil {
 		fmt.Fprintln(os.Stderr, t_err.Error())
 		os.Exit(EXIT_ERROR)
 	}
+}
 
+func exitCish(sourceFd int, state *term.State, status int) {
+	quitRawMode(sourceFd, state)
 	os.Exit(status)
 }
