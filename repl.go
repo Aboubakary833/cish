@@ -225,8 +225,6 @@ func (cmd *Command) handleKeyEnter() bool {
 		}
 
 		if cmd.bufferLen() == 1 || cmd.shouldEscape {
-			cmd.buffer, _ = strings.CutSuffix(cmd.buffer, backSlace)
-			cmd.cursorPos--
 			cmd.shouldEscape = false
 			cmd.printPS2Prompt()
 			return false
@@ -254,6 +252,10 @@ func (cmd *Command) handleKeyEnter() bool {
 // and depending on the cmd states, determine what
 // action should be done.
 func (cmd *Command) handleBackspace() {
+
+	var lastChar byte;
+	var bufferLen uint64;
+
 	if len(cmd.buffer) == 0 || cmd.cursorPos == 0 {
 		return
 	}
@@ -272,10 +274,14 @@ func (cmd *Command) handleBackspace() {
 		}
 	}
 
-	bufferLen := cmd.bufferLen()
+	if cmd.prompt == PS2 && cmd.buffer[cmd.cursorPos - 1] == KeyBackSlace {
+		return
+	}
+
+	bufferLen = cmd.bufferLen()
 
 	if cmd.cursorIsPeak() {
-		lastChar := cmd.buffer[bufferLen-1]
+		lastChar = cmd.buffer[bufferLen-1]
 		cmd.buffer = cmd.buffer[:bufferLen-1]
 
 		if bufferLen >= 2 && cmd.buffer[bufferLen-2] == KeyBackSlace {
@@ -343,6 +349,14 @@ func (cmd *Command) moveCursor() (err error) {
 		return
 	}
 
+	previousChar := cmd.buffer[cmd.cursorPos - 1]
+
+	if cmd.prompt == PS2 {
+		if key == KeyArrowLeft && (slices.Contains([]byte{KeyNewLine, KeyBackSlace}, previousChar)) {
+			return
+		}
+	}
+
 	// Increase or decrease cursor depending on the key pressed.
 	// Quit function if the key is one of the vertical keys.
 	if key == KeyArrowLeft && cmd.cursorPos > 0 {
@@ -391,7 +405,7 @@ func (cmd *Command) printKey(key byte) {
 		return
 	}
 
-	/* if cmd.prompt == PS2 {
+/* 	if cmd.prompt == PS2 {
 
 		if !cmd.quotesOpened {
 			cmd.defaultPrint(string(key))
